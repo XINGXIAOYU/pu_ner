@@ -175,3 +175,5 @@ class ModelUtils(object):
                     caseing.append(c)
                     char.append(ch)
                 yield np.asarray(tokens), np.asarray(caseing), np.asarray(char), np.asarray(data_Y)
+
+

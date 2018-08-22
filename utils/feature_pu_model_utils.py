@@ -184,7 +184,7 @@ class FeaturedDetectionModelUtils(ModelUtils):
         return list(zip(X, Y, FG)), prior
 
     def load_dataset(self, flag, datasetName, percent):
-        fname = "data/" + datasetName + "/valid." + flag + ".txt"
+        fname = "data/" + datasetName + "/train." + flag + ".txt"
         trainSentences = self.dp.read_processed_file(fname, flag)
         trainSize = int(len(trainSentences) * percent)
         trainSentences = trainSentences[:trainSize]

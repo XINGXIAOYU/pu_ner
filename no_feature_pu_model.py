@@ -73,13 +73,13 @@ class PULSTMCNN(nn.Module):
 
 
 class Trainer(object):
-    def __init__(self, model, prior, beta, gamma, learningRate, p):
+    def __init__(self, model, prior, beta, gamma, learningRate, m):
         self.model = model
         self.learningRate = learningRate
         self.optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, self.model.parameters()),
                                           lr=self.learningRate,
                                           weight_decay=1e-5)
-        self.p = p
+        self.m = m
         self.prior = prior
         self.bestResult = 0
         self.beta = beta
@@ -114,8 +114,8 @@ class Trainer(object):
         hU = result.masked_select(torch.from_numpy(unlabeled).byte().cuda()).contiguous().view(-1, 2)
         pRisk = self.model.loss_func(1, hP)
         uRisk = self.model.loss_func(0, hU)
-        nRisk = uRisk - self.p * self.prior * (1 - pRisk)
-        risk = self.p * self.prior * pRisk + nRisk
+        nRisk = uRisk - self.prior * (1 - pRisk)
+        risk = self.m * pRisk + nRisk
         if nRisk < self.beta:
             risk = -self.gamma * nRisk
         # risk = self.model.loss_func(label, result)
@@ -153,12 +153,12 @@ if __name__ == "__main__":
     parser.add_argument('--beta', type=float, default=0.0)
     parser.add_argument('--gamma', type=float, default=1.0)
     parser.add_argument('--drop_out', type=float, default=0.5)
-    parser.add_argument('--p', type=float, default=4.0)
+    parser.add_argument('--m', type=float, default=0.3)
     parser.add_argument('--flag', default="PER")
     parser.add_argument('--dataset', default="conll2003")
     args = parser.parse_args()
 
-    dp = DataPrepare()
+    dp = DataPrepare(args.dataset)
     mutils = DetectionModelUtils(dp)
 
     trainSet, validSet, testSet, prior = mutils.load_dataset(args.flag, args.dataset)
@@ -179,7 +179,7 @@ if __name__ == "__main__":
         casenet.cuda()
         pulstmcnn.cuda()
 
-    trainer = Trainer(pulstmcnn, prior, args.beta, args.gamma, args.lr, args.p)
+    trainer = Trainer(pulstmcnn, prior, args.beta, args.gamma, args.lr, args.m)
 
     time = 0
 
@@ -208,6 +208,18 @@ if __name__ == "__main__":
             temp2.append(ef)
         valid_words.append(temp)
         valid_efs.append(temp2)
+
+    test_sentences = dp.read_origin_file("data/" + args.dataset + "/test.txt")
+    test_words = []
+    test_efs = []
+    for s in test_sentences:
+        temp = []
+        temp2 = []
+        for word, ef, lf in s:
+            temp.append(word)
+            temp2.append(ef)
+        test_words.append(temp)
+        test_efs.append(temp2)
 
     for e in range(1, 1000):
         print("Epoch: {}".format(e))
@@ -312,9 +324,54 @@ if __name__ == "__main__":
                 trainer.save(
                     ("saved_model/{}_{}_lr_{}_prior_{}_beta_{}_gamma_{}").format(args.dataset, args.flag,
                                                                                  trainer.learningRate,
-                                                                                 trainer.p,
+                                                                                 trainer.m,
                                                                                  trainer.beta,
                                                                                  trainer.gamma))
             if time > 5:
                 print(("BEST RESULT ON VALIDATE DATA:{}").format(trainer.bestResult))
                 break
+
+    pulstmcnn.load_state_dict(
+        torch.load(("saved_model/{}_{}_lr_{}_prior_{}_beta_{}_gamma_{}").format(args.dataset, args.flag,
+                                                                                trainer.learningRate,
+                                                                                trainer.m,
+                                                                                trainer.beta,
+                                                                                trainer.gamma)))
+
+    pred_test = []
+    corr_test = []
+    for step, (
+            x_word_test_batch, x_case_test_batch, x_char_test_batch,
+            y_test_batch) in enumerate(
+        mutils.iterateSet(testSet, batchSize=100, mode="TEST", shuffle=False)):
+        testBatch = [x_word_test_batch, x_case_test_batch, x_char_test_batch]
+        correcLabels = []
+        for x in y_test_batch:
+            for xi in x:
+                correcLabels.append(xi)
+        lengths = [len(x) for x in x_word_test_batch]
+        predLabels = trainer.test(testBatch, lengths)
+        correcLabels = np.array(correcLabels)
+        assert len(predLabels) == len(correcLabels)
+
+        start = 0
+        for i, l in enumerate(lengths):
+            end = start + l
+            p = predLabels[start:end]
+            c = correcLabels[start:end]
+            pred_test.append(p)
+            corr_test.append(c)
+            start = end
+
+    newSentencesTest = []
+    for i, s in enumerate(test_words):
+        sent = []
+        assert len(s) == len(test_efs[i]) == len(pred_test[i])
+        for j, item in enumerate(s):
+            sent.append([item, test_efs[i][j], pred_test[i][j]])
+        newSentencesTest.append(sent)
+
+    newSentencesValid_, newLabelsValid, newPredsValid = dp.wordLevelGeneration(newSentencesTest)
+    p_valid, r_valid, f1_valid = dp.compute_precision_recall_f1(newLabelsValid, newPredsValid, args.flag,
+                                                                1)
+    print("Test Result: Precision: {}, Recall: {}, F1: {}".format(p_valid, r_valid, f1_valid))

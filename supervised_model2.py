@@ -1,27 +1,26 @@
 # -*- coding: utf-8 -*-
-# @Time    : 2018/8/6 13:08
+# @Time    : 2018/8/22 13:45
 # @Author  : Xiaoyu Xing
-# @File    : supervised_model.py
+# @File    : supervised_model2.py
+
 
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from utils.data_utils import DataPrepare
-from sub_model import CharCNN, CaseNet, WordNet, TimeDistributed, FeatureNet
+from sub_model import CharCNN, CaseNet, WordNet, TimeDistributed
 from utils.supervised_model_utils import SupervisedModelUtils
 import torch.nn as nn
 import torch
 import numpy as np
 from progressbar import *
-from utils.feature_pu_model_utils import FeaturedDetectionModelUtils
 
 
 class SupervisedModel(nn.Module):
-    def __init__(self, dp, charModel, wordModel, caseModel, featureModel, inputSize, hiddenSize, layerNum):
+    def __init__(self, dp, charModel, wordModel, caseModel, inputSize, hiddenSize, layerNum):
         super(SupervisedModel, self).__init__()
         self.dp = dp
         self.charModel = TimeDistributed(charModel, self.dp.char2Idx)
         self.wordModel = wordModel
         self.caseModel = caseModel
-        self.featureModel = featureModel
         self.lstm = nn.LSTM(inputSize, hiddenSize, layerNum, bias=0.5, batch_first=True, bidirectional=True)
         self.fc = nn.Sequential(
             nn.Linear(2 * hiddenSize, 200),
@@ -34,13 +33,12 @@ class SupervisedModel(nn.Module):
         )
         self.loss = nn.CrossEntropyLoss()
 
-    def forward(self, token, case, char, feature):
+    def forward(self, token, case, char):
         charOut, sortedLen1, reversedIndices1 = self.charModel(char)
         wordOut, sortedLen2, reversedIndices2 = self.wordModel(token)
         caseOut, sortedLen3, reversedIndices3 = self.caseModel(case)
-        featureOut, sortedLen4, reversedIndices4 = self.featureModel(feature)
 
-        encoding = torch.cat([wordOut.float(), caseOut.float(), charOut.float(), featureOut.float()], dim=2)
+        encoding = torch.cat([wordOut.float(), caseOut.float(), charOut.float()], dim=2)
 
         sortedLen = sortedLen1
         reverseIndices = reversedIndices1
@@ -81,7 +79,7 @@ class Trainer(object):
         self.negative = np.eye(2)[0]
 
     def train_mini_batch(self, batch, length):
-        token, case, char, feature, trueLabel = batch
+        token, case, char, trueLabel = batch
         maxLen = max([x for x in length])
 
         mask = np.zeros([len(token), maxLen, 2])
@@ -95,7 +93,7 @@ class Trainer(object):
         lids = np.array(lids)
 
         self.optimizer.zero_grad()
-        result = self.model(token, case, char, feature)
+        result = self.model(token, case, char)
         result = result.masked_select(torch.from_numpy(mask).byte().cuda()).contiguous().view(-1, 2)
 
         # print(result)
@@ -108,14 +106,14 @@ class Trainer(object):
         return loss.data
 
     def test(self, batch, length):
-        token, case, char, feature = batch
+        token, case, char = batch
         maxLen = max([x for x in length])
 
         mask = np.zeros([len(token), maxLen, 2])
         for i, l in enumerate(length):
             mask[i][:l][:] = 1
 
-        result = self.model(token, case, char, feature)
+        result = self.model(token, case, char)
 
         result = result.masked_select(torch.from_numpy(mask).byte().cuda()).contiguous().view(-1, 2)
         # print(result)
@@ -134,14 +132,14 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="PU NER")
     parser.add_argument('--flag', default="PER")
-    parser.add_argument('--dataset', default="twitter")
+    parser.add_argument('--dataset', default="conll2003")
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--pert', type=float, default=1.0)
     args = parser.parse_args()
 
     dp = DataPrepare(args.dataset)
-    mutils = FeaturedDetectionModelUtils(dp)
-    trainSet, validSet, testSet, _ = mutils.load_dataset(args.flag, args.dataset, args.pert)
+    mutils = SupervisedModelUtils(dp)
+    trainSet, validSet, testSet = mutils.load_dataset(args.flag, args.dataset, args.pert)
     trainSize = len(trainSet)
     validSize = len(validSet)
     testSize = len(testSet)
@@ -150,8 +148,7 @@ if __name__ == "__main__":
     charcnn = CharCNN(dp.char2Idx)
     wordnet = WordNet(dp.wordEmbeddings, dp.word2Idx)
     casenet = CaseNet(dp.caseEmbeddings, dp.case2Idx)
-    featurenet = FeatureNet()
-    supModel = SupervisedModel(dp, charcnn, wordnet, casenet, featurenet, 150, 200, 1)
+    supModel = SupervisedModel(dp, charcnn, wordnet, casenet, 138, 200, 1)
     if torch.cuda.is_available:
         charcnn.cuda()
         wordnet.cuda()
@@ -203,10 +200,10 @@ if __name__ == "__main__":
         print("Epoch: {}".format(e))
         bar.start()
         losses = []
-        for step, (x_word_batch, x_case_batch, x_char_batch, x_feature, y_true_batch) in enumerate(
+        for step, (x_word_batch, x_case_batch, x_char_batch, y_true_batch) in enumerate(
                 mutils.iterateSet(trainSet, batchSize=400, mode="TEST", shuffle=True)):
             bar.update(step)
-            batch = [x_word_batch, x_case_batch, x_char_batch, x_feature, y_true_batch]
+            batch = [x_word_batch, x_case_batch, x_char_batch, y_true_batch]
             lengths = [len(x) for x in x_word_batch]
             loss = trainer.train_mini_batch(batch, lengths)
             losses.append(loss)
@@ -217,11 +214,9 @@ if __name__ == "__main__":
             # train set
             pred_train = []
             corr_train = []
-            for step, (
-                    x_word_train_batch, x_case_train_batch, x_char_train_batch, x_feature,
-                    y_true_train_batch) in enumerate(
-                mutils.iterateSet(trainSet, batchSize=100, shuffle=False, mode="TEST")):
-                trainBatch = [x_word_train_batch, x_case_train_batch, x_char_train_batch, x_feature]
+            for step, (x_word_train_batch, x_case_train_batch, x_char_train_batch, y_true_train_batch) in enumerate(
+                    mutils.iterateSet(trainSet, batchSize=100, shuffle=False, mode="TEST")):
+                trainBatch = [x_word_train_batch, x_case_train_batch, x_char_train_batch]
                 y_true = []
 
                 for i, s in enumerate(y_true_train_batch):
@@ -257,10 +252,9 @@ if __name__ == "__main__":
 
             pred_valid = []
             corr_valid = []
-            for step, (
-                    x_word_test_batch, x_case_test_batch, x_char_test_batch, x_feature, y_true_test_batch) in enumerate(
-                mutils.iterateSet(validSet, batchSize=100, shuffle=False, mode="TEST")):
-                validBatch = [x_word_test_batch, x_case_test_batch, x_char_test_batch, x_feature]
+            for step, (x_word_test_batch, x_case_test_batch, x_char_test_batch, y_true_test_batch) in enumerate(
+                    mutils.iterateSet(validSet, batchSize=100, shuffle=False, mode="TEST")):
+                validBatch = [x_word_test_batch, x_case_test_batch, x_char_test_batch]
 
                 y_true_test = []
 
@@ -312,10 +306,10 @@ if __name__ == "__main__":
     pred_test = []
     corr_test = []
     for step, (
-            x_word_test_batch, x_case_test_batch, x_char_test_batch, x_feature,
+            x_word_test_batch, x_case_test_batch, x_char_test_batch,
             y_test_batch) in enumerate(
         mutils.iterateSet(testSet, batchSize=100, mode="TEST", shuffle=False)):
-        testBatch = [x_word_test_batch, x_case_test_batch, x_char_test_batch, x_feature]
+        testBatch = [x_word_test_batch, x_case_test_batch, x_char_test_batch]
         correcLabels = []
         for x in y_test_batch:
             for xi in x:

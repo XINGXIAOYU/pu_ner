@@ -195,7 +195,7 @@ if __name__ == "__main__":
 
     bar = ProgressBar(maxval=int((len(trainSet) - 1) / args.batch_size))
 
-    train_sentences = dp.read_origin_file("data/" + args.dataset + "/valid.txt")
+    train_sentences = dp.read_origin_file("data/" + args.dataset + "/train.txt")
     trainSize = int(len(train_sentences) * args.pert)
     train_sentences = train_sentences[:trainSize]
     train_words = []
@@ -293,51 +293,51 @@ if __name__ == "__main__":
             print("Precision: {}, Recall: {}, F1: {}".format(p_train, r_train, f1_train))
 
             # valid set
-            # pred_valid = []
-            # corr_valid = []
-            # for step, (
-            #         x_word_test_batch, x_case_test_batch, x_char_test_batch, x_feature_test_batch,
-            #         y_test_batch) in enumerate(
-            #     mutils.iterateSet(validSet, batchSize=100, mode="TEST", shuffle=False)):
-            #     validBatch = [x_word_test_batch, x_case_test_batch, x_char_test_batch, x_feature_test_batch]
-            #     correcLabels = []
-            #     for x in y_test_batch:
-            #         for xi in x:
-            #             correcLabels.append(xi)
-            #     lengths = [len(x) for x in x_word_test_batch]
-            #     predLabels = trainer.test(validBatch, lengths)
-            #     correcLabels = np.array(correcLabels)
-            #     assert len(predLabels) == len(correcLabels)
-            #
-            #     start = 0
-            #     for i, l in enumerate(lengths):
-            #         end = start + l
-            #         p = predLabels[start:end]
-            #         c = correcLabels[start:end]
-            #         pred_valid.append(p)
-            #         corr_valid.append(c)
-            #         start = end
-            #
-            # newSentencesValid = []
-            # for i, s in enumerate(valid_words):
-            #     sent = []
-            #     assert len(s) == len(valid_efs[i]) == len(pred_valid[i])
-            #     for j, item in enumerate(s):
-            #         sent.append([item, valid_efs[i][j], pred_valid[i][j]])
-            #     newSentencesValid.append(sent)
-            #
-            # newSentencesValid_, newLabelsValid, newPredsValid = dp.wordLevelGeneration(newSentencesValid)
-            # p_valid, r_valid, f1_valid = dp.compute_precision_recall_f1(newLabelsValid, newPredsValid, args.flag,
-            #                                                             1)
-            # print("Precision: {}, Recall: {}, F1: {}".format(p_valid, r_valid, f1_valid))
+            pred_valid = []
+            corr_valid = []
+            for step, (
+                    x_word_test_batch, x_case_test_batch, x_char_test_batch, x_feature_test_batch,
+                    y_test_batch) in enumerate(
+                mutils.iterateSet(validSet, batchSize=100, mode="TEST", shuffle=False)):
+                validBatch = [x_word_test_batch, x_case_test_batch, x_char_test_batch, x_feature_test_batch]
+                correcLabels = []
+                for x in y_test_batch:
+                    for xi in x:
+                        correcLabels.append(xi)
+                lengths = [len(x) for x in x_word_test_batch]
+                predLabels = trainer.test(validBatch, lengths)
+                correcLabels = np.array(correcLabels)
+                assert len(predLabels) == len(correcLabels)
 
-            if f1_train <= trainer.bestResult:
+                start = 0
+                for i, l in enumerate(lengths):
+                    end = start + l
+                    p = predLabels[start:end]
+                    c = correcLabels[start:end]
+                    pred_valid.append(p)
+                    corr_valid.append(c)
+                    start = end
+
+            newSentencesValid = []
+            for i, s in enumerate(valid_words):
+                sent = []
+                assert len(s) == len(valid_efs[i]) == len(pred_valid[i])
+                for j, item in enumerate(s):
+                    sent.append([item, valid_efs[i][j], pred_valid[i][j]])
+                newSentencesValid.append(sent)
+
+            newSentencesValid_, newLabelsValid, newPredsValid = dp.wordLevelGeneration(newSentencesValid)
+            p_valid, r_valid, f1_valid = dp.compute_precision_recall_f1(newLabelsValid, newPredsValid, args.flag,
+                                                                        1)
+            print("Precision: {}, Recall: {}, F1: {}".format(p_valid, r_valid, f1_valid))
+
+            if f1_valid <= trainer.bestResult:
                 time += 1
             else:
-                trainer.bestResult = f1_train
+                trainer.bestResult = f1_valid
                 time = 0
                 trainer.save(
-                    ("saved_model/valid_{}_{}_lr_{}_prior_{}_beta_{}_gamma_{}_percent_{}").format(args.dataset, args.flag,
+                    ("saved_model/{}_{}_lr_{}_prior_{}_beta_{}_gamma_{}_percent_{}").format(args.dataset, args.flag,
                                                                                             trainer.learningRate,
                                                                                             trainer.m,
                                                                                             trainer.beta,
@@ -347,7 +347,7 @@ if __name__ == "__main__":
                 break
 
     pulstmcnn.load_state_dict(
-        torch.load("saved_model/valid_{}_{}_lr_{}_prior_{}_beta_{}_gamma_{}_percent_{}".format(args.dataset, args.flag,
+        torch.load("saved_model/{}_{}_lr_{}_prior_{}_beta_{}_gamma_{}_percent_{}".format(args.dataset, args.flag,
                                                                                          trainer.learningRate,
                                                                                          trainer.m,
                                                                                          trainer.beta,

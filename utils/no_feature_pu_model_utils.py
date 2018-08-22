@@ -66,7 +66,7 @@ class DetectionModelUtils(ModelUtils):
         valid_sentences_X, valid_sentences_Y, valid_sentences_LF = self.padding(
             self.createMatrices(validSentences, self.dp.word2Idx, self.dp.case2Idx, self.dp.char2Idx))
 
-        testSentences = self.dp.read_processed_file("data/test.txt", flag)
+        testSentences = self.dp.read_processed_file("data/" + datasetName + "/test.txt", flag)
         self.add_char_info(testSentences)
         test_sentences_X, test_sentences_Y, test_sentences_LF = self.padding(
             self.createMatrices(testSentences, self.dp.word2Idx, self.dp.case2Idx, self.dp.char2Idx))
@@ -76,6 +76,41 @@ class DetectionModelUtils(ModelUtils):
                    (test_sentences_X, test_sentences_Y, test_sentences_LF))
 
         trainSet, prior = self.make_PU_dataset(dataset)
+        trainX, trainY, FG = zip(*trainSet)
+        trainSet = list(zip(trainX, trainY, FG))
+        validSet = list(zip(valid_sentences_X, valid_sentences_Y, valid_sentences_LF))
+        testSet = list(zip(test_sentences_X, test_sentences_Y, test_sentences_LF))
+        return trainSet, validSet, testSet, prior
+
+    def load_new_dataset(self, flag, datasetName, iter, p):
+        fname = "data/" + datasetName + "/train." + flag + str(iter) + ".txt"
+        trainSentences = self.dp.read_processed_file(fname, flag)
+        self.add_char_info(trainSentences)
+        train_sentences_X, train_sentences_Y, train_sentences_LF = self.padding(
+            self.createMatrices(trainSentences, self.dp.word2Idx, self.dp.case2Idx, self.dp.char2Idx))
+
+        validSentences = self.dp.read_processed_file("data/" + datasetName + "/valid.txt", flag)
+        self.add_char_info(validSentences)
+        valid_sentences_X, valid_sentences_Y, valid_sentences_LF = self.padding(
+            self.createMatrices(validSentences, self.dp.word2Idx, self.dp.case2Idx, self.dp.char2Idx))
+
+        testSentences = self.dp.read_processed_file("data/" + datasetName + "/test.txt", flag)
+        self.add_char_info(testSentences)
+        test_sentences_X, test_sentences_Y, test_sentences_LF = self.padding(
+            self.createMatrices(testSentences, self.dp.word2Idx, self.dp.case2Idx, self.dp.char2Idx))
+
+        dataset = ((train_sentences_X, train_sentences_Y, train_sentences_LF),
+                   (valid_sentences_X, valid_sentences_Y, valid_sentences_LF),
+                   (test_sentences_X, test_sentences_Y, test_sentences_LF))
+
+        trainSet, n_lp = self.make_PU_dataset(dataset)
+
+        n = 0
+        for i, sentence in enumerate(train_sentences_X):
+            n += len(sentence[0])
+
+        prior = float(n * p - n_lp) / float(n - n_lp)
+
         trainX, trainY, FG = zip(*trainSet)
         trainSet = list(zip(trainX, trainY, FG))
         validSet = list(zip(valid_sentences_X, valid_sentences_Y, valid_sentences_LF))

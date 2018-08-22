@@ -86,9 +86,9 @@ def dict_match_word(dp, dutils, fileName, dictName, flag, mode, dataset):
     sentences = dp.read_origin_file(fileName)
     length = [len(i) for i in sentences]
     maxLen = max(length)
-    sentences = dutils.lookup_in_Dic(dictName, sentences, flag, maxLen)
+    sentences,_ = dutils.lookup_in_Dic(dictName, sentences, flag, maxLen)
     if mode == "TRAIN":
-        dp.writeFile("data/" + dataset + "/test." + flag + ".txt", mode, flag, sentences)
+        dp.writeFile("data/" + dataset + "/train." + flag + ".txt", mode, flag, sentences)
     ss = []
     for sentence in sentences:
         s = []
@@ -109,7 +109,8 @@ def dict_match_result(dp, dutils, fileName, dictName, flag, mode, dataset):
     sentences = dp.read_origin_file(fileName)
     length = [len(i) for i in sentences]
     maxLen = max(length)
-    sentences = dutils.lookup_in_Dic(dictName, sentences, flag, maxLen)
+    sentences, num = dutils.lookup_in_Dic(dictName, sentences, flag, maxLen)
+    print(num)
     if mode == "TRAIN":
         dp.writeFile("data/" + dataset + "/valid." + flag + ".txt", mode, flag, sentences)
     ss = []
@@ -143,42 +144,34 @@ if __name__ == "__main__":
     dutils = utils.dict_utils.DictUtils()
     # num = 3
 
-    # for num in range(10):
-    #     p1, r1, f11, tp, np_1, pp = dict_match_result(dp, dutils,
-    #                                                   "data/conll2003/train-10-fold/train" + str(num) + ".txt",
-    #                                                   "dictionary/conll2003/misc.txt",
-    #                                                   "MISC",
-    #                                                   "TRAIN", "conll2003", num)
-    #     print("%.4f" % p1, "%.4f" % r1, "%.4f" % f11, tp, np_1, pp)
+    # p1, r1, f11, tp, np_1, pp = dict_match_word(dp, dutils,
+    #                                               "data/twitter/train.txt",
+    #                                               "dictionary/twitter/person.txt",
+    #                                               "PER",
+    #                                               "TEST", "twitter")
+    # print("%.4f" % p1, "%.4f" % r1, "%.4f" % f11, tp, np_1, pp)
+    # # #
+    # # count_entity("wikigold", "person")
+    # #
+    # p2, r2, f12, tp, np_2, pp = dict_match_word(dp, dutils, "data/twitter/train.txt",
+    #                                               "dictionary/twitter/location.txt",
+    #                                               "LOC",
+    #                                               "TEST", "twitter")
+    # print("%.4f" % p2, "%.4f" % r2, "%.4f" % f12, tp, np_2, pp)
 
-    p1, r1, f11, tp, np_1, pp = dict_match_result(dp, dutils,
-                                                  "data/twitter/test.txt",
-                                                  "dictionary/twitter/person.txt",
-                                                  "PER",
-                                                  "TRAIN", "twitter")
-    print("%.4f" % p1, "%.4f" % r1, "%.4f" % f11, tp, np_1, pp)
-    #
-    # count_entity("wikigold", "person")
-    #
-    p2, r2, f12, tp, np_2, pp = dict_match_result(dp, dutils, "data/twitter/test.txt",
-                                                  "dictionary/twitter/location.txt",
-                                                  "LOC",
-                                                  "TRAIN", "twitter")
-    print("%.4f" % p2, "%.4f" % r2, "%.4f" % f12, tp, np_2, pp)
-
-    p3, r3, f13, tp, np_3, pp = dict_match_result(dp, dutils, "data/twitter/test.txt",
+    p3, r3, f13, tp, np_3, pp = dict_match_word(dp, dutils, "data/twitter/train.txt",
                                                   "dictionary/twitter/organization.txt",
                                                   "ORG", "TEST", "twitter")
     print("%.4f" % p3, "%.4f" % r3, "%.4f" % f13, tp, np_3, pp)
 
     # count_entity("conll2003", "organization")
-    # p4, r4, f14, tp, np_4, pp = dict_match_result(dp, dutils, "data/twitter/valid.txt",
+    # p4, r4, f14, tp, np_4, pp = dict_match_result(dp, dutils, "data/twitter/test.txt",
     #                                               "dictionary/twitter/misc.txt",
     #                                               "MISC", "TEST",
     #                                               "twitter")
     # print("%.4f" % p4, "%.4f" % r4, "%.4f" % f14, tp, np_4, pp)
 
-    print(np_1 + np_2 + np_3 + np_4)
+    # print(np_1 + np_2 + np_3 + np_4)
 
 
 
@@ -241,4 +234,42 @@ MISC
 1.0000 0.3384 0.5056 112 331 112
 1.0000 0.3595 0.5289 119 331 119
 
+0.9849 0.3718 0.5398 261 702 265
+0.9213 0.3059 0.4593 1405 4593 1525
+
+
+twitter train
+0.7926 0.2603 0.3919 577 2217 728
+0.8589 0.3091 0.4545 925 2993 1077
+0.8377 0.2058 0.3304 191 928 228
+
+twitter test
+0.8139 0.2770 0.4133 503 1816 618
+0.8440 0.3044 0.4474 725 2382 859
+0.8244 0.2014 0.3238 169 839 205
+
+
+train+unlabel
+per: 4278
+loc: 8960
+org: 5439
+misc: 3668
+
+train
+per 482
+loc 316
+org 237
+misc 113
+
+train+unlabel
+per 596
+loc 352
+org 249
+misc 122
+
+train
+per: 2388
+loc: 4493
+org: 3198
+misc: 1525
 """
